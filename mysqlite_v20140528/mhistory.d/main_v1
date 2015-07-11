@@ -1,0 +1,37 @@
+#include"./lib/dbtime.h"
+#include"./lib/dbmem.h"
+#include"csv.h"
+#include"./lib/common.h"
+#include<stdio.h>
+
+int main()
+{
+	/*
+	DBtime_StartCount();
+	int i = 0 ;
+	for( i = 0 ; i < 100000000 ; i++);
+	DBtime_EndCountAndShow("a","test");
+
+	DBmem_StartCount();
+	DBcalloc(1,sizeof(int));
+	DBmem_EndCountAndShow("b","test");
+	*/
+
+	Item test;
+	int  i ;
+	int out ;
+	Date test_date;
+	test.pdata = &test_date ;
+	test.type=Date_type;
+
+	for( i = 0 ; i < 100 ; i++)
+	{
+		test_date.year=i ;
+		test_date.month=i ;
+		test_date.date=i ;
+		out = MapItem2Int(test);
+		printf("%d\n",out);
+
+	}
+
+}

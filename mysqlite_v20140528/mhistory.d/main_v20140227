@@ -1,0 +1,16 @@
+#include"./lib/dbtime.h"
+#include"./lib/dbmem.h"
+#include"./lib/common.h"
+#include"csv.h"
+#include<stdio.h>
+
+//test funtion ImportCsv2Mem
+int main()
+{
+	pMCsvFile  mfile =NULL ;
+	pSegArray psa ;
+	mfile = ImportCsv2Mem("log");
+	BuildFileProperties(psa,mfile);
+	//PrintMemCvsFile(mfile);
+	DestroyMCsvFile(mfile);
+}

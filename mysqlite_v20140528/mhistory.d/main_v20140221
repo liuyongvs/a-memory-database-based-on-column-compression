@@ -1,0 +1,32 @@
+#include"./lib/dbtime.h"
+#include"./lib/dbmem.h"
+#include"csv.h"
+#include"./lib/common.h"
+#include<stdio.h>
+
+int main()
+{
+	//pHashTable pht = CreateHashTable(100);
+	//DestroyHashTable(pht);
+	
+	Item item1 ;
+	Item item2 ;
+	Date a ;
+	a.year =1 ;
+	a.month = 1;
+	a.date = 1 ;
+	Date b ;
+	b.year =2 ;
+	b.month=2 ;
+	b.date =2 ;
+
+	item1.pdata = &a ;
+	item1.type = Date_type ;
+
+	item2.pdata=&b ;
+	item2.type = Date_type ;
+
+	pItem ptest = CloneItem(&item1);
+	//printf("%d\n",CompareItems(&item1,&item2));
+	printf("%d\n",((Date*)(ptest->pdata))->year);
+}

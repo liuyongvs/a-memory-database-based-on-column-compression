@@ -1,0 +1,949 @@
+#include"runlength.h"
+#include"csv.h"
+#include"lib/common.h"
+#include"lib/dbmem.h"
+#include<string.h>
+
+int SetNullArray(pnArray pn , int index , int val)
+{
+	if(!pn || index >= pn->len )
+	{
+		debug(" parameter error: pn=0x%x pn->len=%d , index=%d  value=%d",(unsigned int)pn, pn->len,index,val );
+		return ERR ;
+	}
+	pn->nullarray[index]= val;
+	return OK ;
+}
+
+pKColumn InitColumn(pSegment psg)
+{
+	if(!psg)
+	{
+		debug("null parameter");
+		return NULL ;
+	}
+
+	PrintSegmentFiled(psg);
+	unsigned int size = psg->same_items + psg->diff_items ;
+	
+
+	 //psg->len >1 it means a string 
+	unsigned int len = psg->len ;
+	unsigned int nlen = psg->null_items ;
+	DBtype type = psg->type;
+
+
+	//malloc the mememry 
+	void * pm = NULL ;
+	pnArray nlist=NULL ;
+	
+	pKColumn pclmn = (pKColumn)DBcalloc(1,sizeof(KColumn));
+	memcpy(pclmn->name,psg->name,32);
+
+	/*it means there is null among this array */
+	if(nlen>0)
+	{
+		nlist= (pnArray)DBcalloc(1,sizeof(nArray));
+		nlist->nullarray = (short*)DBcalloc(nlen,sizeof(short));
+		nlist->len = nlen ;
+		pclmn->pdata = (unsigned long)nlist ;
+		debug("name:%s ,nullarray valid=%x , len=%d",psg->name,(unsigned int)nlist,nlist->len);
+	}
+	else
+	  pclmn->pdata = 0x00;
+	
+	if(size !=0)
+	{
+			switch(type)
+			{
+				case bool_type:
+					pm = DBcalloc(size,sizeof(Rbool_unit));
+					break ;
+				case char_type:
+					/**/
+					if(len>1)
+						pm = DBcalloc(size,sizeof(Rstring_unit));
+					else
+						pm = DBcalloc(size,sizeof(Rchar_unit));
+					break ;
+				case int_type:
+					pm = DBcalloc(size,sizeof(Rint_unit));
+					break ;
+				case float_type:
+					pm = DBcalloc(size,sizeof(Rfloat_unit));
+					break ;
+				case double_type:
+					pm = DBcalloc(size,sizeof(Rdouble_unit));
+					break ;
+				case Date_type:
+					pm = DBcalloc(size,sizeof(RDate_unit));
+					break ;
+				case DateTime_type:
+					pm = DBcalloc(size,sizeof(RDateTime_unit));
+					break ;
+				case Interger_type:
+					pm = DBcalloc(size,sizeof(RInterger_unit));
+					break ;
+				case Long_type:
+					pm = DBcalloc(size,sizeof(RLong_unit));
+					break ;
+				case Single_type:
+					pm = DBcalloc(size,sizeof(RSingle_unit));
+					break ;
+				case Byte_type:
+					pm = DBcalloc(size,sizeof(RByte_unit));
+					break ;
+				case varchar_type:
+					if(len>1)
+					  pm = DBcalloc(size,sizeof(Rstring_unit));
+					else
+					  pm = DBcalloc(size,sizeof(Rvarchar_unit));
+					break ;
+				default :
+					debug("type out of define");
+					return NULL;
+			};
+			pclmn->flag =1 ; 
+	}
+	else
+	{
+	  pclmn->flag = 0;
+	  pm =0x00 ;
+	}
+
+	pclmn->type = type ;
+	pclmn->len  = size ;
+	pclmn->addr = (unsigned long)pm  ;
+	return pclmn ;
+}
+
+int RunLengthMakeFirtLine(PointerArray ptarray,pItemArray pita , int len , int * poslist,pKColSet pclmnset,short * nullIndexArray)
+{
+
+#if 1
+	int i = 0 ,j =0 ,size =0; 
+	pnArray  nlist = NULL ;
+	//compress len-column data parallel
+	for( j = 0 ; j < len ; j++ )
+	{
+		poslist[j]=0 ;//becase it is first line
+		// null value
+		if(pita[j][0].len==0)
+		{
+			nlist = (pnArray)pclmnset->kcolarray[j]->pdata  ;
+			if(nlist==NULL) debug("pdata is null");
+			SetNullArray(nlist ,nullIndexArray[j],i);
+			nullIndexArray[j]++;
+			nlist=NULL ;
+			continue ;
+		}
+
+		switch(ptarray[j].type)
+		{
+				case bool_type:
+					ptarray[j].pt.bool_pt[0].data =ValueOf(pita[j][0].pdata,bool*); 
+					ptarray[j].pt.bool_pt[0].pos = 0;
+					ptarray[j].pt.bool_pt[0].pnext = 0;
+					ptarray[j].pt.bool_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case char_type:  
+					/*check whether is a string type */
+					size = pita[j][0].len ; 
+					if(size >1) goto ST1;
+					else
+					{
+						ptarray[j].pt.char_pt[0].data = ValueOf(pita[j][0].pdata,char*);
+						ptarray[j].pt.char_pt[0].pos = 0;
+						ptarray[j].pt.char_pt[0].pnext = 0;
+						ptarray[j].pt.char_pt[0].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				case int_type:  
+					//debug("[%d]=%d",j,ValueOf(pita[j][0].pdata,int*));
+					ptarray[j].pt.int_pt[0].data = ValueOf(pita[j][0].pdata,int*);
+					ptarray[j].pt.int_pt[0].pos = 0;
+					ptarray[j].pt.int_pt[0].pnext = 0;
+					ptarray[j].pt.int_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case float_type:
+					ptarray[j].pt.float_pt[0].data = ValueOf(pita[j][0].pdata,float*);
+					ptarray[j].pt.float_pt[0].pos = 0;
+					ptarray[j].pt.float_pt[0].pnext = 0;
+					ptarray[j].pt.float_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case double_type:
+					ptarray[j].pt.double_pt[0].data = ValueOf(pita[j][0].pdata,double*); 
+					ptarray[j].pt.double_pt[0].pos = 0;
+					ptarray[j].pt.double_pt[0].pnext = 0;
+					ptarray[j].pt.double_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case Date_type:
+					DateCpy(&(ptarray[j].pt.Date_pt[0].data),(Date*)(pita[j][0].pdata));
+					ptarray[j].pt.Date_pt[0].pos = 0;
+					ptarray[j].pt.Date_pt[0].pnext = 0;
+					ptarray[j].pt.Date_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case DateTime_type:
+					DateTimeCpy(&(ptarray[j].pt.DateTime_pt[0].data),(DateTime*)(pita[j][0].pdata));
+					ptarray[j].pt.DateTime_pt[0].pos = 0;
+					ptarray[j].pt.DateTime_pt[0].pnext = 0;
+					ptarray[j].pt.DateTime_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case Interger_type:
+					ptarray[j].pt.Interger_pt[0].data = ValueOf(pita[j][0].pdata,Interger*);
+					ptarray[j].pt.Interger_pt[0].pos = 0;
+					ptarray[j].pt.Interger_pt[0].pnext = 0;
+					ptarray[j].pt.Interger_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case Long_type:
+					ptarray[j].pt.Long_pt[0].data = ValueOf(pita[j][0].pdata,Long*);
+					ptarray[j].pt.Long_pt[0].pos = 0;
+					ptarray[j].pt.Long_pt[0].pnext = 0;
+					ptarray[j].pt.Long_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case Single_type:
+					ptarray[j].pt.Single_pt[0].data = ValueOf(pita[j][0].pdata,Single*);
+					ptarray[j].pt.Single_pt[0].pos = 0;
+					ptarray[j].pt.Single_pt[0].pnext = 0;
+					ptarray[j].pt.Single_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case Byte_type:
+					ptarray[j].pt.Byte_pt[0].data = ValueOf(pita[j][0].pdata,Byte*);
+					
+					ptarray[j].pt.Byte_pt[0].pos = 0;
+					ptarray[j].pt.Byte_pt[0].pnext = 0;
+					ptarray[j].pt.Byte_pt[0].tag =  (j==len-1) ?0:1; 
+					break ;
+				case varchar_type:
+					size = pita[j][0].len ; 
+					if(size >1) goto ST1;
+					else
+					{
+						ptarray[j].pt.varchar_pt[0].data = ValueOf(pita[j][0].pdata,varchar*);
+						ptarray[j].pt.varchar_pt[0].pos = 0;
+						ptarray[j].pt.varchar_pt[0].pnext = 0;
+						ptarray[j].pt.varchar_pt[0].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				case string_type:
+ST1: 				{
+						char * string ;
+						ptarray[j].pt.string_pt[0].data = string = DBcalloc(size,sizeof(char));
+						memcpy(string,(void*)(pita[j][0].pdata),size);
+						ptarray[j].pt.string_pt[0].pos = 0;
+						ptarray[j].pt.string_pt[0].pnext = 0;
+						ptarray[j].pt.string_pt[0].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				default:
+					debug("undefine type");
+					return ERR;
+			}
+		}
+#endif
+	return OK ;
+}
+
+int RunLengthMakeUpdateRest(PointerArray ptarray,pItemArray pita , int len , int * poslist ,int i,pKColSet pclmnset,short*nullIndexArray)
+{
+		//	debug("In update");
+			//update
+	int j = 0 ;
+	int size = 0 ;
+	pnArray nlist=NULL ;
+	for( j = 0 ; j < len ; j++ )
+	{
+		debug(">>>>>>>>%d<<<<<<<<<<<<<<<",j);
+		// null value
+		if(pita[j][i].len==0)
+		{
+			nlist = (pnArray)pclmnset->kcolarray[j]->pdata;
+			if(nlist==NULL) debug("pdata is null");
+			SetNullArray(nlist ,nullIndexArray[j],i);
+			nullIndexArray[j]++;
+			nlist=NULL ;
+			continue ;
+		}
+		//set pnext valide
+		ptarray[j].pt.bool_pt[i].tag =  (j==len-1) ?0:1; 
+		switch(ptarray[j].type)
+		{
+			case bool_type:
+				{
+					if(pita[j][i-1].len==0 || (*(bool*)(pita[j][i-1].pdata) != *(bool*)(pita[j][i].pdata)) )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.bool_pt[poslist[j]].data = ValueOf(pita[j][i].pdata,bool*);
+						ptarray[j].pt.bool_pt[poslist[j]].pos = i;
+						ptarray[j].pt.bool_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.bool_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case char_type:  
+				/*check whether is a string*/
+				{
+					size = pita[j][i].len ;
+							if(size>1) goto ST2;
+							else
+							{
+								if(pita[j][i-1].len==0 || *(char*)(pita[j][i-1].pdata) != *(char*)(pita[j][i].pdata) )
+								{
+									++poslist[j];
+									ptarray[j].pt.char_pt[poslist[j]].data = ValueOf(pita[j][i].pdata,char*);
+									ptarray[j].pt.char_pt[poslist[j]].pos = i;
+									ptarray[j].pt.char_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+									ptarray[j].pt.char_pt[i].tag =  (j==len-1) ?0:1; 
+								}
+							}
+							break ;
+				}
+			case int_type:  
+				{
+					if(pita[j][i-1].len==0 || *(int*)(pita[j][i-1].pdata) != *(int*)(pita[j][i].pdata) )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.int_pt[poslist[j]].data =ValueOf(pita[j][i].pdata,int*);
+						ptarray[j].pt.int_pt[poslist[j]].pos = i;
+						ptarray[j].pt.int_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.int_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case float_type:
+				//mark
+				{
+					float f1 =0;
+					float f2 =0;
+					if(pita[j][i-1].len!=0)
+					{
+						f1 = ValueOf(pita[j][i-1].pdata,float*);
+						f2 = ValueOf(pita[j][i].pdata,float*);
+						f1 = f1-f2 ;
+					}
+					else 
+					{//f1>EPSILON must be true
+					  f1 = 10.0;
+					} 
+					f1=abs(f1);
+					
+					if( f1>EPSILON )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.float_pt[poslist[j]].data =f2 ;
+						(ptarray[j].pt.float_pt)[poslist[j]].pos = i;
+						ptarray[j].pt.float_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.float_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case double_type:
+				{
+					double d1=0 ;
+					double d2=0 ;
+					if(pita[j][i-1].len!=0)
+					{
+						d1 = ValueOf(pita[j][i-1].pdata,double*);
+						d2 = ValueOf(pita[j][i].pdata,double*);
+						d1 = d1-d2 ;
+					}
+					else 
+					  d1 =10.0 ;
+					d1 = abs(d1);
+					if(d1 > EPSILON)
+					{
+						++poslist[j] ;
+						ptarray[j].pt.double_pt[poslist[j]].data =d2;
+						ptarray[j].pt.double_pt[poslist[j]].pos = i;
+						ptarray[j].pt.double_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.double_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case Date_type:
+				{
+					if(pita[j][i-1].len==0||cmpDate((Date*)(pita[j][i-1].pdata),(Date*)pita[j][i].pdata))
+					{
+						++poslist[j] ;
+						DateCpy(&(ptarray[j].pt.Date_pt[poslist[j]].data),(Date*)pita[j][i].pdata);
+						ptarray[j].pt.Date_pt[poslist[j]].pos = i;
+						ptarray[j].pt.Date_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.Date_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case DateTime_type:
+				{
+					if(pita[j][i-1].len==0 ||cmpDateTime((DateTime*)(pita[j][i-1].pdata),(DateTime*)pita[j][i].pdata))
+					{
+						++poslist[j] ;
+						DateTimeCpy(&(ptarray[j].pt.DateTime_pt[poslist[j]].data),(DateTime*)pita[j][i].pdata);
+						ptarray[j].pt.DateTime_pt[poslist[j]].pos = i;
+						ptarray[j].pt.DateTime_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.DateTime_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case Interger_type:
+				{
+					if(pita[j][i-1].len==0 || *(Interger*)(pita[j][i-1].pdata) != *(Interger*)(pita[j][i].pdata) )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.Interger_pt[poslist[j]].data =ValueOf(pita[j][i].pdata,Interger*);
+						ptarray[j].pt.Interger_pt[poslist[j]].pos = i;
+						ptarray[j].pt.Interger_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.Interger_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case Long_type:
+				{
+					if(pita[j][i-1].len==0 || *(Long*)(pita[j][i-1].pdata) != *(Long*)(pita[j][i].pdata) )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.Long_pt[poslist[j]].data =ValueOf(pita[j][i].pdata,Long*);
+						ptarray[j].pt.Long_pt[poslist[j]].pos = i;
+						ptarray[j].pt.Long_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.Long_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case Single_type:
+				{
+					Single s1 =0;
+					Single s2 =0 ;
+					if(pita[j][i-1].len!=0)
+					{
+						s1 = ValueOf(pita[j][i-1].pdata,Single*);
+						s2 = ValueOf(pita[j][i].pdata,Single*);
+						s1 = s1-s2 ;
+					}
+					else s1=10.0 ;
+					s1 = abs(s1);
+					if(s1>EPSILON)
+					{
+						++poslist[j] ;
+						ptarray[j].pt.Single_pt[poslist[j]].data =s2;
+						ptarray[j].pt.Single_pt[poslist[j]].pos = i;
+						ptarray[j].pt.Single_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.Single_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case Byte_type:
+				{
+					if( pita[j][i-1].len==0 ||*(Byte*)(pita[j][i-1].pdata) != *(Byte*)(pita[j][i].pdata) )
+					{
+						++poslist[j] ;
+						ptarray[j].pt.Byte_pt[poslist[j]].data =ValueOf(pita[j][i].pdata,Byte*);
+						ptarray[j].pt.Byte_pt[poslist[j]].pos = i;
+						ptarray[j].pt.Byte_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.Byte_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+					break ;
+				}
+			case varchar_type:
+				{
+					size = pita[j][i].len ;
+					if(size>1)
+					{
+						goto ST2;
+					}
+					else
+					{
+						if(pita[j][i-1].len==0 || *(varchar*)(pita[j][i-1].pdata) != *(varchar*)(pita[j][i].pdata) )
+						{
+							++poslist[j] ;
+							ptarray[j].pt.varchar_pt[poslist[j]].data =ValueOf(pita[j][i].pdata,varchar*);
+							ptarray[j].pt.varchar_pt[poslist[j]].pos = i;
+							ptarray[j].pt.varchar_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+							ptarray[j].pt.varchar_pt[i].tag =  (j==len-1) ?0:1; 
+							debug("%d",ptarray[j].pt.varchar_pt[poslist[j]].data);
+						}
+
+					}
+					break ;
+				}
+			case string_type:
+ST2:			{
+					char * string ;
+					if(pita[j][i-1].len==0 ||size != pita[j][i-1].len || strncmp((char*)(pita[j][i-1].pdata),(char*)(pita[j][i].pdata),size))
+					{
+						++poslist[j];
+						ptarray[j].pt.string_pt[poslist[j]].data = string = DBcalloc(size,sizeof(char));
+						memcpy(string,(void*)(pita[j][i].pdata),size);
+						ptarray[j].pt.string_pt[poslist[j]].pos = i;
+						ptarray[j].pt.string_pt[poslist[j]].pnext = (j != len-1)?poslist[j+1]:0 ;
+						ptarray[j].pt.string_pt[i].tag =  (j==len-1) ?0:1; 
+					}
+				}
+				break ;
+			default:
+				debug("undefine type");
+				return ERR;
+				};
+			}
+	return OK ;
+}
+
+void PrintfAddr( PointerArray ptarray,pKColSet kcs ,int len)
+{
+	int i = 0 ;
+	char line[1024]="";
+	pnArray pn=NULL ;
+	unsigned int length ;
+	for( i=0 ;i < len ; i++ )
+	{
+		debug("funtion iner: step1");
+		pn = (pnArray)kcs->kcolarray[i]->pdata ;
+		if(i==31)
+		{
+			debug("######## addr:0x%x pdata:0x%x",kcs->kcolarray[i]->addr,pn);
+		}
+		debug("funtion iner: step2");
+		length = pn==0?0:pn->len;
+		debug("funtion iner: step3");
+
+		sprintf(line,"name[%d]%s---ptaddr:0x%xvs addr:<0x%x>  pdata:0x%x len:%d"
+					,i,kcs->kcolarray[i]->name,ptarray[i].pt.p,kcs->kcolarray[i]->addr,pn,length);
+		debug("funtion iner: step4");
+		puts(line);
+	}
+}
+pKColSet RunLengthCompressionME(pSegArray psga ,pItemArray pita , int len_dep ,int len)
+{
+	if(!psga || !pita || len <= 0 || len_dep<=0)
+	{
+		debug("parameter error");
+		return NULL;
+	}
+
+	int i ,j ,size;
+	PosArray poslist ;//保存当前各个压缩列的最新位置
+
+	/*keep all the run-length compression array*/
+	pKColSet pclmnset = (pKColSet)DBcalloc(1,sizeof(KColSet));
+	pclmnset-> len = len ; //改数组的长度
+
+
+	PointerArray ptarray ;
+	DBtype type ;
+	pnArray nlist =NULL ;
+	int maxsize = 0 ;
+	short nullIndexArray[1024];//mark the current position of nullarray
+
+
+	for( i = 0 ; i < len ; i++ )
+	{
+	   /*同时压缩 len 列 ，此处一次性分配i好所有使用游程压缩的空间*/
+		pclmnset->kcolarray[i] = InitColumn(psga[i]);
+		if(i==31)
+		{
+			debug("###########[%d] pdata:0x%x",pclmnset->kcolarray[i]->pdata);
+		}
+		debug(" InitColumn %d done",i);
+		type = pclmnset->kcolarray[i]->type ;
+		debug("test step %d-1",i);
+		ptarray[i].type = type ;
+		debug("test step %d-2",i);
+		ptarray[i].pt.p = (void*)(pclmnset->kcolarray[i]->addr);
+		debug("test step %d-3",i);
+		nullIndexArray[i]=0 ;
+		debug("test step %d-4",i);
+	}
+
+	debug("step out form for ");
+	/*start to compress the given columns */
+	for( i = 0 ; i < len_dep ; i++ )
+	{
+		debug("PrintfAddr[%d]+",i);
+		PrintfAddr(ptarray,pclmnset,len);
+		debug("PrintfAddr[%d]-",i);
+		/*update the maxsize for each column*/
+		debug("len=%d",len);
+		for( j = 0 ; j < len ;j++)
+		{
+			debug("[%d]len_dep[%d]-step1",i,j);
+			maxsize = pclmnset->kcolarray[j]->maxsize ;
+			debug("[%d]len_dep[%d]-step2",i,j);
+			maxsize = maxsize < pita[j][i].len ? pita[j][i].len: maxsize;
+			debug("[%d]len_dep[%d]-step3",i,j);
+			pclmnset->kcolarray[j]->maxsize = maxsize ;
+			debug("[%d]len_dep[%d]-step4",i,j);
+		}
+		debug("out of len for");
+
+		// firt item of each column
+		if(i==0)
+		{
+			debug("first line+");
+			RunLengthMakeFirtLine(ptarray,pita ,len,poslist,pclmnset,nullIndexArray );
+			debug("first line-");
+		}
+		else
+		{
+			//update
+			RunLengthMakeUpdateRest(ptarray,pita,len,poslist,i,pclmnset,nullIndexArray);
+		}
+	}
+#if 0
+	for( i = 0 ; i < len ;i++)
+	{
+		pclmnset->kcolarray[i]->addr = (unsigned long)ptarray[i].pt.p;
+	}
+#endif
+	return  pclmnset ;
+}
+int PrintKColSetInfo(pKColSet pkc)
+{
+	if(!pkc)
+	{
+		debug("parameter erro");
+		return ERR ;
+	}
+
+	char line[2048] ="";
+	char typename[32];
+	int len  = pkc->len;
+	int i = 0 ;
+	for( i = 0 ; i < len ; i++ )
+	{
+		pKColumn pk = pkc->kcolarray[i];
+		Debug4Type(pk->type,typename);
+		sprintf(line," name:%s\n type:%s\n pdata:0x%x\n addr:0x%x\n len:%d\n maxsize:%d\n flag:%d\n",pk->name,
+					typename,
+					(unsigned int)pk->pdata,
+					(unsigned int)pk->addr,
+					pk->len,
+					pk->maxsize,
+					(int)pk->flag);
+		puts(line);
+		
+	}
+	return OK ;
+}
+
+int DestroyRunLength(pKColSet pkc)
+{
+	if(!pkc)
+	{
+		debug("paramenter error:");
+		return ERR ;
+	}
+
+	int len  = pkc->len ;
+	int len_dep ;
+	int i ;
+	DBtype type ;
+	pKColumn column ;
+	int maxsize = 0 ;
+	pRstring_unit ps ;
+	PrintKColSetInfo(pkc);
+
+#if 1
+	for( i = 0 ; i < len ; i++)
+	{
+		column = pkc->kcolarray[i];
+
+		if(column->pdata!=0)
+		{
+			DBfree((void*)(column->pdata));
+		}
+
+		type = column->type ;
+		maxsize = column->maxsize ;
+		//string 
+#if 0
+		if( (type== varchar_type || type == char_type ) && maxsize>1)
+		{
+			len_dep = column->len ;
+			ps = (pRstring_unit)column->addr ;
+			for( j = 0 ; j < len_dep ; j++)
+			  if(ps[j].data)
+				DBfree(ps[j].data);
+
+		}
+		else
+		{
+			if(column->flag==1)
+			{
+				DBfree((void*)column->addr);
+			}
+		}
+#endif
+	}
+#endif
+	return OK ;
+}
+
+int CheckNull(pKColumn pkc , int index)
+{
+	if(!pkc || index < 0 || index > pkc->len || pkc->pdata==0)
+	{
+		debug("parameter error: null parameter");
+		return -1 ; //represent it 
+	}
+
+	pnArray nulllist = (pnArray) pkc ->pdata ;
+
+	int i = 0;
+	int len = nulllist->len ;
+	for( i =0; i < len ; i++ )
+	{
+		if( nulllist->nullarray[i]==index )
+		{
+			return i ;
+		}
+	}
+	return -1 ;
+}
+int PrintNullArray(pKColumn pkc,void *file ,int flag)
+{
+	if(!pkc)
+	{
+		debug("parameter error: null parameter");
+		return ERR; 
+	}
+
+	FILE * fp =NULL  ;
+	if(flag) fp = file ;
+
+	pnArray nulllist = (pnArray) pkc ->pdata ;
+	if(!nulllist)
+	{
+		if(fp) fprintf(fp,"no null array:\n");
+		else printf("no null array:\n");
+		return OK ;
+	}
+
+	int i ;
+	int len = nulllist->len ;
+	char content[200000]= "null array:";
+	char tmp[1024] ;
+	for( i = 0 ; i < len ; i++ )
+	{
+		sprintf(tmp,"%d ",nulllist->nullarray[i]);
+		strcat(content,tmp);
+	}
+
+	if(fp) fprintf(fp,"%s\n",content);
+	else printf("%s\n",content);
+
+	return OK ;
+
+}
+int PrintColUnit(pKColumn pkc ,void * file ,int flag)
+{
+	if(!pkc)
+	{
+		debug("parameter error : null parameter");
+		return ERR ;
+	}
+
+	FILE *fp =  NULL ;
+	if(flag) fp = (FILE*)file ;
+	int len_dep = pkc->len ;
+	int i ;
+	int isstring = pkc->maxsize ;
+
+	DBtype  datatype  = pkc->type;
+
+	Pointer  pointer ;
+	pointer.pt.p = (void *)pkc->addr;
+	pointer.type = datatype ;
+#if 0
+	pRstring_unit ps = pkc->addr;
+	debug("pKColumn=%x",pkc);
+	debug("%x",ps);
+
+	char * ss  = ps[0].data ;
+	debug("pRvarchar=%x",ps);
+	debug("%x %s",ss,ss);
+	debug(">>>>.%x %s",pointer.pt.string_pt[i].data ,(char*) pointer.pt.string_pt[i].data);
+	
+#else
+
+	for( i = 0 ; i < len_dep ;i++ )
+	{
+		switch(datatype)
+		{
+			case bool_type:
+					fprintf(FFILTER(fp),"(%d,%d,%d)",pointer.pt.bool_pt[i].data, pointer.pt.bool_pt[i].pos, pointer.pt.bool_pt[i].pnext);
+					break;
+			case char_type :
+					{
+						char * address=NULL;
+						if(isstring>1)
+						{
+							address = pointer.pt.string_pt[i].data;
+							fprintf(FFILTER(fp),"(%s,%d,%d)",address, pointer.pt.string_pt[i].pos, pointer.pt.string_pt[i].pnext);
+							address=NULL;
+						}
+						else
+							fprintf(FFILTER(fp),"(%c,%d,%d)",pointer.pt.char_pt[i].data, pointer.pt.char_pt[i].pos, pointer.pt.char_pt[i].pnext);
+					}
+					break;
+
+			case int_type:
+					fprintf(FFILTER(fp),"(%d,%d,%d)",pointer.pt.int_pt[i].data, pointer.pt.int_pt[i].pos, pointer.pt.int_pt[i].pnext);
+					break;
+			case float_type:
+					fprintf(FFILTER(fp),"(%f,%d,%d)",pointer.pt.float_pt[i].data, pointer.pt.float_pt[i].pos, pointer.pt.float_pt[i].pnext);
+					break;
+			case double_type:
+					fprintf(FFILTER(fp),"(%lf,%d,%d)",pointer.pt.double_pt[i].data, pointer.pt.double_pt[i].pos, pointer.pt.double_pt[i].pnext);
+					break;
+			case Date_type:
+					fprintf(FFILTER(fp),"(%d:%d:%d,%d,%d)",pointer.pt.Date_pt[i].data.year,
+								pointer.pt.Date_pt[i].data.month,
+								pointer.pt.Date_pt[i].data.date, 
+								pointer.pt.Date_pt[i].pos, 
+								pointer.pt.Date_pt[i].pnext);
+					break;
+			case DateTime_type:
+					fprintf(FFILTER(fp),"(%d:%d:%d:%d:%d:%d,%d,%d)",pointer.pt.DateTime_pt[i].data.year,
+								pointer.pt.DateTime_pt[i].data.month,
+								pointer.pt.DateTime_pt[i].data.date,
+								pointer.pt.DateTime_pt[i].data.hour,
+								pointer.pt.DateTime_pt[i].data.minute,
+								pointer.pt.DateTime_pt[i].data.sec, 
+								pointer.pt.DateTime_pt[i].pos, 
+								pointer.pt.DateTime_pt[i].pnext);
+					break;
+			case Interger_type:
+					fprintf(FFILTER(fp),"(%d,%d,%d)",pointer.pt.Interger_pt[i].data, pointer.pt.Interger_pt[i].pos, pointer.pt.Interger_pt[i].pnext);
+					break;
+			case Long_type:
+					fprintf(FFILTER(fp),"(%d,%d,%d)",pointer.pt.Long_pt[i].data, pointer.pt.Long_pt[i].pos, pointer.pt.Long_pt[i].pnext);
+					break;
+			case Single_type:
+					fprintf(FFILTER(fp),"(%f,%d,%d)",pointer.pt.Single_pt[i].data, pointer.pt.Single_pt[i].pos, pointer.pt.Single_pt[i].pnext);
+					break;
+			case Byte_type:
+					fprintf(FFILTER(fp),"(%d,%d,%d)",pointer.pt.Byte_pt[i].data, pointer.pt.Byte_pt[i].pos, pointer.pt.Byte_pt[i].pnext);
+					break;
+			case varchar_type:
+					{
+						char * address=NULL ;
+						if(isstring>1)
+						{
+							address = pointer.pt.string_pt[i].data ;
+							//debug("[%d]=%x",i,address);
+							fprintf(FFILTER(fp),"(%s,%d,%d)",address,pointer.pt.string_pt[i].pos, pointer.pt.string_pt[i].pnext);
+							address=NULL;
+						}
+						else
+							fprintf(FFILTER(fp),"(%c,%d,%d)",pointer.pt.varchar_pt[i].data, pointer.pt.varchar_pt[i].pos, pointer.pt.varchar_pt[i].pnext);
+					}
+					break;
+			case string_type:
+					break ;
+			default:
+					debug("undefine type");
+					return ERR;
+		}
+	}
+#endif
+		fprintf(FFILTER(fp),"\n");
+
+		return OK ;
+}
+
+void PrintRLCFile(char* filename,pKColSet pkcs)
+{
+	FILE * fp =NULL ;
+	int flag =0 ;
+	
+	if(filename) 
+	{
+		fp =fopen(filename,"w");
+		flag=1 ;
+	}
+
+	int i = 0 ;
+	int len = pkcs->len ; 
+	pKColumn  colist =NULL;
+	for( i = 0 ; i < len ;i++)
+	{
+		colist = pkcs->kcolarray[i] ;
+		//PrintNullArray(colist,fp,flag);
+		PrintColUnit(colist ,fp ,flag);
+	}
+	if(fp)
+		fclose(fp);
+}
+
+int TestRunLengthCompressionMethod(pMCsvFile mfile , pSegArray psa)
+{
+	if(!mfile)
+	{
+		debug("parameter error");
+		return ERR ;
+	}
+
+	pKColSet pkcs =NULL ; 
+	pItemArray pita  ;
+	//the pItemArray's length
+	int len = mfile->len ; 
+	//the row number of each column
+	int len_dep = mfile->rows ;
+
+
+	memcpy(pita,mfile->colarray,sizeof(pItemArray));
+	pkcs= RunLengthCompressionME(psa,pita,len_dep,len);
+	PrintRLCFile(NULL, pkcs);
+	DestroyRunLength(pkcs);
+	return OK ;
+}
+
+int Debug4Type(DBtype type, char * typename)
+{
+	char flag = 0 ;
+	
+	switch(type)
+	{
+		case bool_type: 
+			strncpy(typename,"bool_type",strlen("bool_type"));
+			break ;
+		case char_type:   
+			strncpy(typename,"char_type",strlen("char_type"));
+			break ;
+		case int_type:   
+			strncpy(typename,"int_type",strlen("int_type"));
+			break ;
+		case float_type: 
+			strncpy(typename,"float_type",strlen("float_type"));
+			break ;
+		case double_type: 
+			strncpy(typename,"double_type",strlen("double_type"));
+			break ;
+		case Date_type: 
+			strncpy(typename,"Date_type",strlen("Date_type"));
+			break ;
+		case DateTime_type: 
+			strncpy(typename,"DateTime_type",strlen("DateTime_type"));
+			break ;
+		case Interger_type: 
+			strncpy(typename,"Interger_type",strlen("Interger_type"));
+			break ;
+		case Long_type: 
+			strncpy(typename,"Long_type",strlen("Long_type"));
+			break ;
+		case Single_type: 
+			strncpy(typename,"Single_type",strlen("Single_type"));
+			break ;
+		case Byte_type: 
+			strncpy(typename,"Byte_type",strlen("Byte_type"));
+			break ;
+		case varchar_type: 
+			strncpy(typename,"varchar_type",strlen("varchar_type"));
+			break ;
+		case string_type :
+			strncpy(typename,"string_type",strlen("string_type"));
+			break ;
+		default:
+			flag =1 ;
+			debug("undefined type");
+	}
+	return flag==1?ERR:OK ;
+}

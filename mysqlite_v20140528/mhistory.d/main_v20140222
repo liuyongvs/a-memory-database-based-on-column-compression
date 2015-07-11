@@ -1,0 +1,22 @@
+#include"./lib/dbtime.h"
+#include"./lib/dbmem.h"
+#include"csv.h"
+#include"./lib/common.h"
+#include<stdio.h>
+
+//test funtion AttributeParse
+int main()
+{
+
+	char line[1024] = "Name:varchar(20),Blank_1:float,Blank_2:double,Type:varchar(2),ID:varchar(18),Sex:char,Birth:Date,Addr:varchar(100),ZipCode:varchar(10),Unkonw_1:char,Blank_3:char,Country:varchar(3),Unkonw_2:int,Unkonw_3:int,Blank_4:char,Blank_5:char,Blank_6:char,NamePinyin:varchar(20),Blank_6:char,Tel:varchar(11),Call:varchar(11),Blank_8:char,Email:varchar(30),Blank_9:char,Blank_10:char,Blank_11:char,Company:varchar(50),Blank_12:char,Blank_13:char,Blank_14:char,Zero:int,Checkin:date,Unkonw_4:int" ;
+
+	CAttrtList alist;
+
+	AttributeParse(line,33,alist);
+
+	int i ; 
+	for( i = 0 ;  i < 33 ; i++)
+	{
+		printf("name:%-10s	type:%d	size:%d\n",alist[i].colName,alist[i].type,alist[i].size);
+	}
+}
